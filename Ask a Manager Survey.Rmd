@@ -1,0 +1,290 @@
+---
+title: "Ask a Manager Survey"
+author: "Shir Berson and Noy Bar-Moshe"
+date: "June 2022"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style type="text/css">
+
+h1.title {
+  font-size: 38px;
+  color: Pink;
+  font-family: "Copperplate", Fantasy;
+}
+</style>
+```{r echo=F}
+knitr::opts_chunk$set(warning = F, message = F)
+```
+Noy Bar-Moshe ID: 315407551  
+Shir Berson ID: 206550857
+
+
+# Introduction
+
+The data set we chose contains the results of a survey which was conducted in 2021 on more than 24,000 managers in different occupations, at a variety of ages, countries, races, years of experience, salaries and more.  
+We are first year students combining a B.Sc in Digital Sciences for Hi tech and a BA in Business Management.   Therefore we find it very interesting to research about women in managerial positions and we will concentrate on this in our project.  
+This data does not reflect the general population, it reflects "Ask a Manager" readers who self-selected to respond and were mostly women.
+
+In our project we raised a few interesting questions which led us to essential conclusions, using hypothesis tests and linear regression model.
+
+We imported the data set using the following code from github:
+
+```{r}
+survey <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-05-18/survey.csv', show_col_types = FALSE)
+```
+From the source (URL):
+
+https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-05-18/readme.md#cleaning-script
+
+
+
+# Data Visualization
+
+First we wanted to demonstrate the survey respondent's gender in order to illustrate the distribution of responses.
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+survey %>% 
+  ggplot(aes(x = gender)) + 
+  geom_bar(na.rm = T, fill = "lightgreen") +
+  theme_bw() + 
+  labs(y = NULL, x = "Gender", title = "Survey pariticipants by gender") +
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 5)) 
+```
+
+We can tidy up answers that belong to the same category and unite them in order to get more reliable and clear data:
+
+```{r}
+survey %>% mutate(gender = fct_recode(gender, "Other" = "Other or prefer not to answer",
+                                              "Other" = "Prefer not to answer")) %>% 
+  ggplot(aes(x = gender)) + 
+  geom_bar(fill = "lightgreen") +
+  theme_bw() + 
+  labs(y = NULL, x = "Gender", title = "Survey pariticipants by gender") +
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_discrete(na.translate = FALSE, labels = function(x) str_wrap(x, width = 5))
+```
+
+Even though we are in the 2000s, and it appears that there is equality between the sexes, there are still differences between their salaries. We wanted to observe the situation among managerial positions and to see if the gap between women and men exists there as well.  
+
+
+```{r}
+library(scales)
+survey %>% filter(gender =="Man") %>% 
+  group_by(industry) %>% summarise(Count = n()) %>%
+  arrange(-Count) %>% 
+  select(industry) %>% 
+  head(10) %>% 
+  inner_join(survey, by = "industry") %>% 
+  filter(gender %in% c("Man", "Woman")) %>% 
+  group_by(industry, gender) %>% summarise(Count = n(),
+                                           `Mean Salary` = mean(annual_salary, ne.rm=T)) %>% 
+  ggplot(aes(x=industry, y=`Mean Salary`, fill = gender)) + 
+  geom_col(position = "dodge") + 
+  theme_bw() + 
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 5)) + 
+  scale_fill_manual(values = c("Man" = "cornflowerblue", "Woman" = "pink")) + 
+  labs(fill = "Gender", x = "Industry", title = "Wage Disparity between Men and Women") +
+  scale_y_continuous(labels = comma) + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(size = 8))
+```
+
+Unfortunately, we can see that the gap exists also in managerial positions.  
+Even though the majority of the respondents were woman and the man were in a minority, it did not present men in a negative light, on the contrary, it only strengthened the fact that they earn more than women.  
+
+We wanted to present the different age groups among the survey's respondents :  
+
+```{r}
+survey %>% ggplot(aes(x=how_old_are_you)) + geom_bar(fill = "mediumpurple1") + 
+  labs(x=NULL, y = NULL) + theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5))+
+  labs(title = "Age groups")
+```
+
+We can see that the most frequent age group of managers in the different industries is 25-34.  
+
+# Model 1: Hypothesis Test 
+
+There is a social perception that there are professions that are associated with women, for example administration, education, health care and more. High-tech professions and computing are more identified with men. We are interested in finding out whether the proportion of women in the high-tech field is divided equally with other professions or not, and to see the distribution in the various industries.
+
+```{r}
+survey %>% filter(gender == "Woman") %>% 
+  group_by(industry) %>% summarise(Count = n()) %>% filter(Count > 800) %>% 
+  ggplot(aes(x = reorder(industry, -Count), y = Count)) + 
+  geom_col(aes(fill = Count), show.legend = F, col = "black") + 
+  geom_text(aes(label = Count), vjust = -0.5) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 5)) + 
+  scale_fill_gradient(low = "pink", high = "purple") + 
+  labs(x = "Industry", y = NULL, title = "The Number of Women in Managerial Positions Across Various Industries") + 
+  theme_bw() 
+```
+
+NOTE: We chose to filter the data to industries which contains more than 800 women in it.
+
+* Null hypothesis: 50% of female managers are in computing and technology industries.  
+* Alternative hypothesis: Less than 50% of female managers are in computing and technology industries.
+
+$$
+H_0: p=0.5 \quad \text{Vs.}\quad H_1:p<0.5
+$$
+
+```{r}
+women_occupation_data <- survey %>% filter(gender == "Woman") %>% 
+  group_by(industry) %>% summarise(Count = n()) %>% filter(Count > 800) %>% 
+  mutate(Women_Ind = ifelse(industry %in% c("Education (Higher Education)",
+                                            "Health care",
+                                            "Nonprofits",
+                                            "Government and Public Administration"), 1, 0)) %>% 
+  group_by(Women_Ind) %>% summarise(Count = sum(Count))
+
+
+
+prop.test(women_occupation_data$Count[1], 
+          sum(women_occupation_data$Count), 
+          alternative = "less")
+```
+
+As a result, we reject the null hypothesis, since we can see the proportion is below 0.5. This  indicates that we must work as a society to increase the participation of women in the high tech sector and allow them to advance to managerial positions.  
+We are glad to be a part of that effort as women who study our degree.
+
+
+# Model 2: T-test 
+
+Another thing we found interesting to explore was how much the level of your education influences the level of your annual salary as a manager in the various industries.  
+We chose to distinguish between high-level education, which we defined as: master's degree, PhD, or professional degree, and low-level education, which included high school, college, and college degree.  
+
+```{r}
+high_low_dat <- survey %>% 
+  mutate(Education_level = ifelse(highest_level_of_education_completed %in% c("High School", 
+                                                                              "College degree",
+                                                                              "Some college"), 
+                                  "Low", "High")) %>% 
+  select(annual_salary, Education_level)
+
+high_low_dat %>% 
+  ggplot(aes(x=annual_salary, fill=Education_level)) + 
+  geom_boxplot(alpha = 0.5) +
+  scale_x_log10(labels = comma) + 
+  theme_bw() + 
+  theme(axis.text.y = element_blank(),
+        legend.position = "bottom") + 
+  labs(x=NULL, y="Annual Salary (Logarithmic scale)", fill = "Education Level")
+```
+
+* Null hypothesis: The mean annual salary of managers with high education level and low education level is the same.  
+* Alternative hypothesis: There is a different between the mean salaries of managers with high education level and low education level.  
+
+$$
+H_0:\mu_{\text{Low}} = \mu_{\text{High}}\quad H_1: \mu_{\text{Low}} \ne \mu_{\text{High}}
+$$
+
+```{r}
+t.test(annual_salary ~ Education_level, data = high_low_dat)
+```
+
+We can see that the p.value is high, therefore we accept the null hypothesis.  
+The differences between low education and high education are not big enough to determine the means are not equal.
+We were surprise to discover that there is no justification for high levels of education in terms of salary.   
+
+
+# Model 3 - Linear regression
+
+For women in different industries, we wished to find out whether the amount of additional monetary compensation (such as stock or bonuses) you receive is a function of your salary level.
+
+Model:
+$$
+\text{Monetary compensation}_i = \beta_0+\beta_1\cdot\text{Annual Salary}_i + \epsilon_i
+$$
+* Null hypothesis: There is no correlation between annual salaries and compensations.  
+* Alternative hypothesis: There is correlation between annual salaries and compensations.   
+
+$$
+H_0:\beta_1=0\quad \text{Vs.}\quad H_1:\beta_1\ne 0.
+$$
+First, we wanted to check what range of amounts most women are in, in order to reflect the majority and avoid extreme cases when performing a regression.
+For this purpose, we chose to check how much women earn above and under 500k salary:  
+
+```{r}
+survey %>% 
+  select(annual_salary, gender) %>% 
+  filter(gender == "Woman") %>% 
+  na.omit() %>% 
+  mutate(over_500k = ifelse(annual_salary>500000, 1, 0)) %>% 
+  group_by(over_500k) %>% summarise(Count = n())
+```
+
+As we can see, most of the women who responded the survey earn below 500k (20,265). In order to get reliable results, we choose to focus on this range of salaries.  
+NOTE: We also focus only on women who receive additional compensation.
+
+```{r}
+data_for_lm <- survey %>% 
+  select(annual_salary, other_monetary_comp, gender) %>% 
+  na.omit() %>% 
+  mutate(other_monetary_comp = as.numeric(other_monetary_comp)) %>% 
+  filter(other_monetary_comp > 0 & annual_salary < 500000 & gender == "Woman")
+```
+
+
+```{r}
+data_for_lm %>% 
+  ggplot(aes(x=annual_salary, y = other_monetary_comp)) + 
+  geom_point(col = "black", alpha = 0.5) +
+  geom_smooth(col = "pink", method = "lm") + 
+  theme_bw() +
+  labs(x = "Annual Salary",y = "Monetary compensation")
+```
+
+```{r}
+lm.mod <- lm(other_monetary_comp ~ annual_salary, data = data_for_lm)
+summary(lm.mod)
+```
+
+$$
+b_0 = -14110,\quad b_1 = 0.3044.
+$$
+We can see that $\beta_1\ne 0$, meaning the correlation between annual salaries and compensations exsits.  
+
+In order to check the assumption of normality and homoscedasticity, we wrote the following code:  
+```{r}
+library(patchwork)
+p1 <- ggplot(NULL, aes(x=lm.mod$fitted.values, y=scale(lm.mod$residuals))) + 
+  geom_point(alpha = 0.5) + 
+  geom_hline(yintercept = 0, col = "mediumvioletred") +
+  theme_bw() + 
+  scale_x_continuous(label = comma) + 
+  labs(x="Fitted Values", y="Standardized Residuals")
+
+p2 <- data_for_lm %>% 
+  ggplot(aes(sample = scale(lm.mod$residuals))) +
+  stat_qq_line()  + stat_qq() +
+  theme_bw() + 
+  labs(title = "QQ-plot of the standardized residuals")
+
+p1 / p2
+```
+
+According to the qqplot of the residuals and the homoscedasticity check, the assumptions do not hold and therefore, the statistical inference from the linear regression is unreliable.
+
+
+# Discussion and Summary
+
+Through out our project, we have discovered interesting findings about managerial positions and women in managerial positions in particular. 
+One might think that the differences are not drastic among managers in the different industries, and between man and women in managerial positions.   
+However, we discovered that the differences exist, such as stigmatic cataloging of professions by gender or wage disparity between men and women.   
+What we thought about our world and society, that they are modern and advanced in their perceptions and behavior, turns out to be not accurate and not that ideal.  
+It is still a huge development from many years back, and we discovered that there are also some positive aspects, such as breaking the perception that you must have a high level education to get promoted. We hope that it is still in process, and it will continue turning for the best and towards equality, between the different sexes, classes, and segments in society.  
+In the meanwhile, we will do our best effort to break the statistics and learn from our research what we should take into consideration in our actions as future managers in the high tech field (fingers crossed!).   
+
+Thanks for reading!  
+Hope you enjoyed.
+
